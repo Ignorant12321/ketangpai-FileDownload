@@ -3,6 +3,7 @@
  * ------------------------------------------------------------------
  * 功能：
  *   - 课程详情 / 资料详情页提取附件直链
+ *   - 文件夹进入浏览 / 递归逐个下载
  *   - 搜索、全选、复制预览链接、顺序下载
  *   - 明暗主题、拖拽、最小化、Toast 提示
  * 逻辑与旧版保持一致，重做了视觉层与信息结构。
@@ -55,6 +56,11 @@
       '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
     scan:
       '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>',
+    folder:
+      '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    folderOpen:
+      '<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>',
+    arrowLeft: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
   };
 
   const icon = (name, size = 14, cls = "") =>
@@ -292,6 +298,30 @@
   }
   #ktp-course-panel .nu-sel b{color:var(--accent);font-weight:700}
 
+  /* ---------- 文件夹路径 ---------- */
+  #ktp-course-panel .nu-dirbar{
+    display:flex;align-items:center;gap:8px;min-height:34px;padding:6px 14px;
+    background:var(--card);border-bottom:1px solid var(--line);
+  }
+  #ktp-course-panel .nu-back{
+    flex:none;height:23px;padding:0 7px;display:inline-flex;align-items:center;gap:4px;
+    border:1px solid var(--line);border-radius:6px;background:var(--paper);
+    color:var(--ink-2);font:600 10.5px/1 var(--sans);cursor:pointer;transition:.14s;
+  }
+  #ktp-course-panel .nu-back:hover{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+  #ktp-course-panel .nu-crumb{
+    display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;
+    font-size:11.5px;color:var(--ink-3);
+  }
+  #ktp-course-panel .nu-crumb-btn{
+    max-width:180px;padding:1px 2px;border:0;border-radius:4px;background:transparent;
+    color:var(--ink-2);font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    cursor:pointer;transition:.14s;
+  }
+  #ktp-course-panel .nu-crumb-btn:hover{background:var(--card-2);color:var(--accent)}
+  #ktp-course-panel .nu-crumb-btn:last-child{color:var(--ink);font-weight:650}
+  #ktp-course-panel .nu-crumb-sep{flex:none;color:var(--ink-3);opacity:.55}
+
   /* ---------- 状态 / 进度 ---------- */
   #ktp-course-panel .nu-status{
     display:flex;align-items:center;gap:8px;min-height:34px;padding:7px 14px;
@@ -374,6 +404,8 @@
   #ktp-course-panel .nu-ico.xls{--c:#2e8a52}
   #ktp-course-panel .nu-ico.zip{--c:#7c5cc4}
   #ktp-course-panel .nu-ico.other{--c:#6f727a}
+  #ktp-course-panel .nu-ico.folder{--c:#b07b2c}
+  #ktp-course-panel .nu-ico .nu-i{width:16px;height:16px}
   #ktp-course-panel .nu-item:hover .nu-ico{transform:translateY(-1px)}
   #ktp-course-panel .nu-meta{min-width:0}
   #ktp-course-panel .nu-name{
@@ -422,6 +454,16 @@
   #ktp-course-panel .nu-act[data-act="dl"]:disabled{
     background:transparent;border-color:transparent;color:var(--ink-2);
   }
+  #ktp-course-panel .nu-act[data-act="enter"]{
+    color:var(--warn);
+    background:var(--warn-soft);
+    border-color:color-mix(in srgb,var(--warn) 18%,transparent);
+  }
+  #ktp-course-panel .nu-act[data-act="enter"]:hover{
+    background:color-mix(in srgb,var(--warn) 18%,var(--card));
+    border-color:color-mix(in srgb,var(--warn) 38%,transparent);
+    color:var(--warn);
+  }
   #ktp-course-panel .nu-act:disabled{opacity:.22;cursor:not-allowed;background:transparent;border-color:transparent}
   #ktp-course-panel .nu-act.ok{color:var(--ok);background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 28%,transparent)}
   #ktp-course-panel .nu-act.busy{opacity:.5;pointer-events:none}
@@ -453,6 +495,7 @@
   #ktp-course-panel.min{width:auto;min-width:0}
   #ktp-course-panel.min .nu-top,
   #ktp-course-panel.min .nu-cmd,
+  #ktp-course-panel.min .nu-dirbar,
   #ktp-course-panel.min .nu-status,
   #ktp-course-panel.min .nu-prog,
   #ktp-course-panel.min .nu-list,
@@ -535,7 +578,7 @@
       <div class="nu-hd-r">
         <div class="nu-stat" title="已提取的文件数">
           <span class="nu-stat-n" id="ktpCount">0</span>
-          <span class="nu-stat-l">FILES</span>
+          <span class="nu-stat-l">ITEMS</span>
         </div>
         <div class="nu-hbtns">
           <button class="nu-ib" id="ktpRefresh" type="button" title="重新提取（刷新直链）" aria-label="重新提取">${icon(
@@ -592,6 +635,13 @@
       <span class="nu-sel" id="ktpSelNote">已选 <b>0</b></span>
     </div>
 
+    <div class="nu-dirbar" id="ktpDirbar" hidden>
+      <button class="nu-back" id="ktpBack" type="button" title="返回上级文件夹">
+        ${icon("arrowLeft", 12)}<span>返回</span>
+      </button>
+      <div class="nu-crumb" id="ktpCrumb"></div>
+    </div>
+
     <div class="nu-status">
       <div class="nu-st-l">
         <span class="nu-chip" id="ktpBadgeMode" hidden></span>
@@ -606,8 +656,8 @@
     <footer class="nu-ft">
       <span class="nu-ft-l">${icon("shield", 11)}本地提取 · 数据不出浏览器</span>
       <span class="nu-ft-r">
-        <span class="nu-ft-hint">点击行选中</span>
-        <span class="nu-ver">V5</span>
+        <span class="nu-ft-hint">点击选中 · 双击文件夹进入</span>
+        <span class="nu-ver">V6</span>
       </span>
     </footer>
   `;
@@ -762,6 +812,14 @@
 
   let DATA = [];
   const selected = new Set();
+  const navPath = [];
+  let navCourseid = null;
+  let lastToken = null;
+  let lastParams = null;
+
+  const currentDirId = () =>
+    navPath.length ? navPath[navPath.length - 1].id : 0;
+  const isFolderRow = (r) => r.kind === "folder";
 
   const previewUrl = (r) => r.rurl || r.pluginUrl || r.playurl || r.oss || "";
   const fileUrl = (r) => r.oss || "";
@@ -816,15 +874,23 @@
       ({ r }) => !q || String(r.name || "").toLowerCase().includes(q)
     );
 
+    const files = DATA.filter((r) => !isFolderRow(r));
+    const folderN = DATA.length - files.length;
     $("ktpCount").textContent = String(DATA.length);
-    const okN = DATA.filter((r) => fileUrl(r)).length;
-    $("ktpSum").innerHTML = DATA.length
-      ? `成功 <b class="ok">${okN}</b> · 失败 <b class="bad">${DATA.length - okN}</b>`
+    const okN = files.filter((r) => fileUrl(r)).length;
+    $("ktpSum").innerHTML = files.length
+      ? `成功 <b class="ok">${okN}</b> · 失败 <b class="bad">${
+          files.length - okN
+        }</b>${folderN ? ` · 文件夹 ${folderN}` : ""}`
+      : folderN
+      ? `文件夹 <b>${folderN}</b>`
       : "";
 
     if (!rows.length) {
       list.innerHTML = DATA.length
         ? emptyState("没有匹配的文件", "换个关键词试试，或清空搜索框。")
+        : navPath.length
+        ? emptyState("文件夹是空的", "返回上级选择其他文件夹。")
         : emptyState("还没有提取内容", "点击右上角「提取」，拉取当前页面的课程资料。");
       updateSelUI();
       return;
@@ -832,11 +898,14 @@
 
     list.innerHTML = rows
       .map(({ r, i }) => {
-        const [cls, label] = extIcon(r.name);
-        const hasFile = !!fileUrl(r);
-        const hasPrev = !!previewUrl(r);
+        const folder = isFolderRow(r);
+        const [cls, label] = folder ? ["folder", ""] : extIcon(r.name);
+        const hasFile = !folder && !!fileUrl(r);
+        const hasPrev = !folder && !!previewUrl(r);
         const checked = selected.has(i);
-        const status = hasFile
+        const status = folder
+          ? `<span class="nu-warn">文件夹 · 双击进入</span>`
+          : hasFile
           ? `<span class="nu-ok">可下载</span>`
           : `<span class="nu-bad">${escapeHtml(r.error || "无法提取直链")}</span>`;
         const warn =
@@ -845,21 +914,17 @@
                 r.missing.join(", ")
               )}">链接不完整</span>`
             : "";
-        return `
-        <div class="nu-item${checked ? " selected" : ""}" data-i="${i}">
-          <input class="nu-check" type="checkbox" data-act="select" tabindex="-1" ${
-            checked ? "checked" : ""
-          } aria-label="选择文件" />
-          <span class="nu-num">${String(i + 1).padStart(2, "0")}</span>
-          <span class="nu-ico ${cls}" aria-hidden="true">${label}</span>
-          <div class="nu-meta">
-            <div class="nu-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name || "-")}</div>
-            <div class="nu-sub">
-              ${r.size ? `<span class="nu-size">${escapeHtml(r.size)}</span>` : ""}
-              ${status}${warn}
-            </div>
-          </div>
-          <div class="nu-acts">
+        const actions = folder
+          ? `
+            <button class="nu-act" type="button" data-act="enter" title="进入文件夹" aria-label="进入文件夹">${icon(
+              "folderOpen",
+              13
+            )}</button>
+            <button class="nu-act" type="button" data-act="dl" title="下载文件夹内所有文件" aria-label="下载文件夹内所有文件">${icon(
+              "download",
+              13
+            )}</button>`
+          : `
             <button class="nu-act" type="button" data-act="copy" title="复制预览页链接" aria-label="复制预览页链接" ${
               hasPrev ? "" : "disabled"
             }>${icon("copy", 13)}</button>
@@ -868,13 +933,80 @@
             }>${icon("external", 13)}</button>
             <button class="nu-act" type="button" data-act="dl" title="下载原始文件" aria-label="下载原始文件" ${
               hasFile ? "" : "disabled"
-            }>${icon("download", 13)}</button>
+            }>${icon("download", 13)}</button>`;
+        return `
+        <div class="nu-item${folder ? " nu-folder" : ""}${
+          checked ? " selected" : ""
+        }" data-i="${i}">
+          <input class="nu-check" type="checkbox" data-act="select" tabindex="-1" ${
+            checked ? "checked" : ""
+          } aria-label="选择项目" />
+          <span class="nu-num">${String(i + 1).padStart(2, "0")}</span>
+          <span class="nu-ico ${cls}" aria-hidden="true">${
+            folder ? icon("folder", 16) : label
+          }</span>
+          <div class="nu-meta">
+            <div class="nu-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name || "-")}</div>
+            <div class="nu-sub">
+              ${r.size ? `<span class="nu-size">${escapeHtml(r.size)}</span>` : ""}
+              ${status}${warn}
+            </div>
           </div>
+          <div class="nu-acts">${actions}</div>
         </div>`;
       })
       .join("");
 
     updateSelUI();
+  }
+
+  function updateNavUI() {
+    const bar = $("ktpDirbar");
+    if (!bar) return;
+    if (!navPath.length) {
+      bar.hidden = true;
+      $("ktpCrumb").innerHTML = "";
+      return;
+    }
+    bar.hidden = false;
+    const parts = [
+      `<button type="button" class="nu-crumb-btn" data-level="-1" title="返回课程根目录">课程全部</button>`,
+      ...navPath.map(
+        (p, i) =>
+          `<button type="button" class="nu-crumb-btn" data-level="${i}" title="${escapeHtml(
+            p.name
+          )}">${escapeHtml(p.name)}</button>`
+      ),
+    ];
+    $("ktpCrumb").innerHTML = parts.join(
+      `<span class="nu-crumb-sep" aria-hidden="true">/</span>`
+    );
+  }
+
+  function enterFolder(folder) {
+    if (!folder || folder.kind !== "folder") return;
+    if (running) return toast("正在提取，请稍候", "err");
+    if (batchRunning) return toast("已有下载任务进行中", "err");
+    navPath.push({ id: folder.folderid, name: folder.name });
+    updateNavUI();
+    run();
+  }
+
+  function goBackFolder() {
+    if (!navPath.length) return;
+    if (running) return toast("正在提取，请稍候", "err");
+    if (batchRunning) return toast("已有下载任务进行中", "err");
+    navPath.pop();
+    updateNavUI();
+    run();
+  }
+
+  function jumpToFolderLevel(level) {
+    if (running) return toast("正在提取，请稍候", "err");
+    if (batchRunning) return toast("已有下载任务进行中", "err");
+    navPath.length = Math.max(0, level + 1);
+    updateNavUI();
+    run();
   }
 
   /* ------------------------------------------------------------------ */
@@ -944,23 +1076,54 @@
   }
 
   let batchRunning = false;
-  async function batchDownload(indices) {
-    const list = indices.map((i) => DATA[i]).filter((r) => r && fileUrl(r));
-    if (!list.length) return toast("没有可下载的文件", "err");
-    if (batchRunning) return;
-    if (!confirm(`将顺序下载 ${list.length} 个文件（逐个保存，不会开多标签）。继续？`)) return;
 
-    batchRunning = true;
+  function beginBatchUI() {
     $("ktpDlAll").disabled = true;
     $("ktpDlSel").disabled = true;
+    $("ktpRun").disabled = true;
+    $("ktpRefresh").disabled = true;
+  }
+
+  function endBatchUI() {
+    batchRunning = false;
+    $("ktpDlAll").disabled = false;
+    $("ktpRun").disabled = false;
+    $("ktpRefresh").disabled = false;
+    updateSelUI();
+    setTimeout(() => {
+      $("ktpProg").style.width = "0%";
+    }, 900);
+  }
+
+  async function prepareRawJobs(raw, label = "解析") {
+    const list = [];
+    const seen = new Set();
+    for (let i = 0; i < raw.length; i++) {
+      const job = raw[i];
+      $("ktpStatus").innerHTML = `${escapeHtml(label)} <b>${
+        i + 1
+      }/${raw.length}</b> · ${escapeHtml(job.name || "")}`;
+      $("ktpProg").style.width =
+        Math.round((i / Math.max(1, raw.length)) * 100) + "%";
+      await prepareJob(job);
+      if (!job.oss) continue;
+      const key = job.oss || job.fileid || job.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(job);
+    }
+    return list;
+  }
+
+  async function downloadList(list, label = "批量下载") {
     let okN = 0,
       failN = 0;
 
     for (let i = 0; i < list.length; i++) {
       const r = list[i];
-      $("ktpStatus").innerHTML = `批量下载 <b>${i + 1}/${list.length}</b> · ${escapeHtml(
-        r.name
-      )}`;
+      $("ktpStatus").innerHTML = `${escapeHtml(label)} <b>${
+        i + 1
+      }/${list.length}</b> · ${escapeHtml(r.name || "")}`;
       $("ktpProg").style.width = Math.round((i / list.length) * 100) + "%";
       try {
         await downloadFile(r);
@@ -973,14 +1136,92 @@
     }
 
     $("ktpProg").style.width = "100%";
-    $("ktpStatus").innerHTML = `批量完成 · 成功 <b>${okN}</b> · 失败 <b>${failN}</b>`;
-    toast(`批量下载完成：${okN} 成功 / ${failN} 失败`, failN ? "err" : "ok");
-    batchRunning = false;
-    $("ktpDlAll").disabled = false;
-    updateSelUI();
-    setTimeout(() => {
-      $("ktpProg").style.width = "0%";
-    }, 900);
+    $("ktpStatus").innerHTML = `${escapeHtml(
+      label
+    )} · 成功 <b>${okN}</b> · 失败 <b>${failN}</b>`;
+    toast(`${label}完成：${okN} 成功 / ${failN} 失败`, failN ? "err" : "ok");
+  }
+
+  async function batchDownload(indices) {
+    if (running) return toast("正在提取，请稍候", "err");
+    if (batchRunning) return;
+    const items = indices.map((i) => DATA[i]).filter(Boolean);
+    const direct = items.filter((r) => !isFolderRow(r) && fileUrl(r));
+    const folders = items.filter((r) => isFolderRow(r));
+    if (!direct.length && !folders.length)
+      return toast("没有可下载的文件", "err");
+
+    const msg = folders.length
+      ? `将递归展开 ${folders.length} 个文件夹，并下载 ${
+          direct.length
+        } 个直接选中的文件（逐个保存）。继续？`
+      : `将顺序下载 ${direct.length} 个文件（逐个保存，不会开多标签）。继续？`;
+    if (!confirm(msg)) return;
+
+    batchRunning = true;
+    beginBatchUI();
+    try {
+      const expanded = [];
+      for (const folder of folders) {
+        $("ktpStatus").textContent = `读取文件夹 · ${folder.name}`;
+        const raw = await collectFolderFiles(folder.folderid);
+        expanded.push(...(await prepareRawJobs(raw, `解析 ${folder.name}`)));
+      }
+
+      const list = [];
+      const seen = new Set();
+      for (const r of [...direct, ...expanded]) {
+        const key = r.oss || r.fileid || r.name;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push(r);
+      }
+      if (!list.length) {
+        $("ktpStatus").textContent = "没有可下载的文件";
+        return toast("没有可下载的文件", "err");
+      }
+      await downloadList(list, "批量下载");
+    } catch (e) {
+      console.warn("[ktp] 批量下载失败", e);
+      toast("批量下载失败: " + (e.message || e), "err");
+    } finally {
+      endBatchUI();
+    }
+  }
+
+  async function downloadFolder(folder) {
+    if (running) return toast("正在提取，请稍候", "err");
+    if (batchRunning) return toast("已有下载任务进行中", "err");
+    if (
+      !confirm(
+        `将递归下载文件夹“${folder.name}”中的所有文件（逐个保存）。继续？`
+      )
+    )
+      return;
+
+    batchRunning = true;
+    beginBatchUI();
+    try {
+      $("ktpStatus").textContent = `读取文件夹 · ${folder.name}`;
+      const raw = await collectFolderFiles(folder.folderid);
+      if (!raw.length) {
+        $("ktpStatus").textContent = "文件夹为空或无法读取";
+        toast("文件夹为空或无法读取", "err");
+        return;
+      }
+      const list = await prepareRawJobs(raw, `解析 ${folder.name}`);
+      if (!list.length) {
+        $("ktpStatus").textContent = "没有可下载的文件";
+        toast("没有可下载的文件", "err");
+        return;
+      }
+      await downloadList(list, `文件夹 ${folder.name}`);
+    } catch (e) {
+      console.warn("[ktp] 下载文件夹失败", e);
+      toast("下载文件夹失败: " + (e.message || e), "err");
+    } finally {
+      endBatchUI();
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -998,7 +1239,9 @@
       if (actBtn.disabled) return;
       const act = actBtn.dataset.act;
 
-      if (act === "copy") {
+      if (act === "enter") {
+        enterFolder(r);
+      } else if (act === "copy") {
         const text = previewUrl(r);
         if (!text) return toast("无预览链接", "err");
         const ok = await copyText(text);
@@ -1012,7 +1255,11 @@
         if (!url) return toast("无预览链接", "err");
         window.open(url, "_blank", "noopener");
         toast("已在新标签打开预览页");
+      } else if (act === "dl" && isFolderRow(r)) {
+        await downloadFolder(r);
       } else if (act === "dl") {
+        if (running) return toast("正在提取，请稍候", "err");
+        if (batchRunning) return toast("已有下载任务进行中", "err");
         if (!fileUrl(r)) return toast("无直链", "err");
         const original = actBtn.innerHTML;
         actBtn.classList.add("busy");
@@ -1045,6 +1292,21 @@
     const box = item.querySelector('input[type="checkbox"]');
     if (box) box.checked = on;
     updateSelUI();
+  });
+
+  $("ktpList").addEventListener("dblclick", (e) => {
+    if (e.target.closest(".nu-act, .nu-check")) return;
+    const item = e.target.closest(".nu-item");
+    if (!item) return;
+    const r = DATA[Number(item.dataset.i)];
+    if (r && isFolderRow(r)) enterFolder(r);
+  });
+
+  $("ktpBack").onclick = goBackFolder;
+  $("ktpCrumb").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-level]");
+    if (!btn) return;
+    jumpToFolderLevel(Number(btn.dataset.level));
   });
 
   $("ktpSelAll").onchange = (e) => {
@@ -1301,6 +1563,125 @@
     return "none";
   }
 
+  function isFolderItem(item) {
+    if (!item || !item.id) return false;
+    if (String(item.item_type) === "3") return true;
+    return (
+      !item.attachment &&
+      !item.title &&
+      !item.playurl &&
+      !item.downloadurl &&
+      !item.rurl &&
+      !item.url &&
+      !!item.name &&
+      String(item.contenttype) === "0" &&
+      String(item.contentid) === "0"
+    );
+  }
+
+  function fileJobsFromItem(item) {
+    const title = item.title || item.name || "";
+    const atts = Array.isArray(item.attachment)
+      ? item.attachment
+      : item.attachment
+      ? [item.attachment]
+      : [];
+    const itemPlay = item.playurl || item.videourl || item.video_url || null;
+    const itemDl =
+      item.downloadurl || item.downurl || item.fileurl || item.url || null;
+    const itemRurl = item.rurl || item.pluginUrl || null;
+
+    if (!atts.length) {
+      if (!(itemPlay || itemDl || itemRurl)) return [];
+      return [
+        {
+          title,
+          name: item.name || title,
+          size: item.size || "",
+          rurl: itemRurl,
+          playurl: itemPlay,
+          downloadurl: itemDl,
+          oss: null,
+          resource: item.id,
+        },
+      ];
+    }
+
+    return atts.map((att) => ({
+      title,
+      name: att.name || title,
+      size: att.size || "",
+      rurl: att.rurl || itemRurl,
+      playurl: att.playurl || itemPlay,
+      downloadurl:
+        att.downloadurl || att.downurl || att.fileurl || att.url || itemDl,
+      resource: item.id,
+      fileid: att.fileid || null,
+    }));
+  }
+
+  function folderJobFromItem(item) {
+    const name = item.name || item.title || "文件夹";
+    return {
+      kind: "folder",
+      title: name,
+      name,
+      size: "",
+      folderid: item.id,
+      oss: null,
+      resource: item.id,
+    };
+  }
+
+  async function fetchCourseItems(dirid, token, params, quiet = false) {
+    const courseid = params.get("courseid");
+    const courserole = Number(params.get("courserole") || "0");
+    const submod = params.get("submodulename") || "2,8";
+    const baseTypes = submod.split(",").filter(Boolean);
+    // 文件夹内容接口只在 contenttype 同时包含 2 和 8 时按 dirid 返回子项；
+    // 只传 2 会退化为整门课程的资料列表。
+    const contenttype = dirid
+      ? [...new Set([...baseTypes, "2", "8"])]
+      : baseTypes.length
+      ? baseTypes
+      : ["2", "8"];
+    const all = [];
+    let page = 1,
+      pageTotal = 1;
+
+    do {
+      const data = await xhrJson(
+        "https://openapiv5.ketangpai.com//FutureV2/CourseMeans/getCourseContent",
+        token,
+        {
+          courseid,
+          contenttype,
+          dirid: dirid || 0,
+          lessonlink: [],
+          sort: [],
+          page,
+          limit: 50,
+          desc: 3,
+          courserole,
+          vtr_type: "",
+          reqtimestamp: Date.now(),
+        }
+      );
+      if (!data) throw new Error("空响应");
+      if (data.status !== 1)
+        throw new Error(data.message || "接口异常 code=" + data.code);
+      const d = data.data || {};
+      pageTotal = d.pageTotal || 1;
+      all.push(...(d.list || []));
+      if (!quiet) {
+        $("ktpStatus").textContent = `列表 ${page}/${pageTotal} 页 · ${all.length} 条`;
+      }
+      page++;
+    } while (page <= pageTotal);
+
+    return all;
+  }
+
   async function fetchJobs(mode, params, token) {
     const courseid = params.get("courseid");
     const courserole = Number(params.get("courserole") || "0");
@@ -1357,78 +1738,71 @@
       }));
     }
 
-    const submod = params.get("submodulename") || "2,8";
-    const contenttype = submod.split(",").filter(Boolean);
-    const all = [];
-    let page = 1,
-      pageTotal = 1;
-    do {
-      const data = await xhrJson(
-        "https://openapiv5.ketangpai.com//FutureV2/CourseMeans/getCourseContent",
-        token,
-        {
-          courseid,
-          contenttype,
-          dirid: 0,
-          lessonlink: [],
-          sort: [],
-          page,
-          limit: 50,
-          desc: 3,
-          courserole,
-          vtr_type: "",
-          reqtimestamp: Date.now(),
-        }
-      );
-      if (!data) throw new Error("空响应");
-      if (data.status !== 1) throw new Error(data.message || "接口异常 code=" + data.code);
-      const d = data.data || {};
-      pageTotal = d.pageTotal || 1;
-      all.push(...(d.list || []));
-      $("ktpStatus").textContent = `列表 ${page}/${pageTotal} 页 · ${all.length} 条`;
-      page++;
-    } while (page <= pageTotal);
+    const items = await fetchCourseItems(currentDirId(), token, params);
+    const jobs = [];
+    for (const item of items) {
+      if (isFolderItem(item)) {
+        jobs.push(folderJobFromItem(item));
+      } else {
+        jobs.push(...fileJobsFromItem(item));
+      }
+    }
+    return jobs;
+  }
+
+  async function prepareJob(job) {
+    const resolved = await resolveJobUrl(job);
+    if (!resolved) {
+      job.oss = null;
+      job.error = "无法提取直链";
+      return job;
+    }
+
+    const oss = toPublicOss(resolved);
+    let needsOssSign = false;
+    try {
+      needsOssSign =
+        /(^|\.)(attachments\.ketangpai\.com|aliyuncs\.com)$/i.test(
+          new URL(oss).hostname
+        );
+    } catch {}
+    const missing = needsOssSign
+      ? ["OSSAccessKeyId", "Expires", "Signature"].filter((k) => {
+          try {
+            return !new URL(oss).searchParams.has(k);
+          } catch {
+            return true;
+          }
+        })
+      : [];
+
+    job.oss = oss;
+    job.name = mediaName(job.name, oss);
+    job.hls = /\.m3u8(\?|$)/i.test(oss);
+    job.missing = missing.length ? missing : null;
+    job.error = null;
+    return job;
+  }
+
+  async function collectFolderFiles(folderId, depth = 0, seen = new Set()) {
+    if (!lastToken || !lastParams) return [];
+    if (depth > 10 || seen.has(folderId)) return [];
+    seen.add(folderId);
+
+    let items = [];
+    try {
+      items = await fetchCourseItems(folderId, lastToken, lastParams, true);
+    } catch (e) {
+      console.warn("[ktp] 读取文件夹失败", folderId, e);
+      return [];
+    }
 
     const jobs = [];
-    for (const item of all) {
-      const title = item.title || item.name || "";
-      const atts = Array.isArray(item.attachment)
-        ? item.attachment
-        : item.attachment
-        ? [item.attachment]
-        : [];
-      const itemPlay = item.playurl || item.videourl || item.video_url || null;
-      const itemDl =
-        item.downloadurl || item.downurl || item.fileurl || item.url || null;
-      const itemRurl = item.rurl || item.pluginUrl || null;
-      if (!atts.length) {
-        if (itemPlay || itemDl || itemRurl) {
-          jobs.push({
-            title,
-            name: item.name || title,
-            size: item.size || "",
-            rurl: itemRurl,
-            playurl: itemPlay,
-            downloadurl: itemDl,
-            oss: null,
-            resource: item.id,
-          });
-        }
-        // 文件夹 / 作业等没有附件的条目直接跳过
-        continue;
-      }
-      for (const att of atts) {
-        jobs.push({
-          title,
-          name: att.name || title,
-          size: att.size || "",
-          rurl: att.rurl || itemRurl,
-          playurl: att.playurl || itemPlay,
-          downloadurl:
-            att.downloadurl || att.downurl || att.fileurl || att.url || itemDl,
-          resource: item.id,
-          fileid: att.fileid || null,
-        });
+    for (const item of items) {
+      if (isFolderItem(item)) {
+        jobs.push(...(await collectFolderFiles(item.id, depth + 1, seen)));
+      } else {
+        jobs.push(...fileJobsFromItem(item));
       }
     }
     return jobs;
@@ -1439,7 +1813,7 @@
   /* ------------------------------------------------------------------ */
   let running = false;
   async function run() {
-    if (running) return;
+    if (running || batchRunning) return;
     const hashQuery = location.hash.includes("?")
       ? location.hash.slice(location.hash.indexOf("?") + 1)
       : "";
@@ -1458,14 +1832,28 @@
     }
 
     running = true;
-    const modeLabel = mode === "resource" ? "当前资料" : "课程全部";
+    lastToken = token;
+    lastParams = params;
+    if (mode === "resource" || navCourseid !== courseid) {
+      navPath.length = 0;
+      navCourseid = courseid;
+    }
+    updateNavUI();
+
+    const modeLabel =
+      mode === "resource" ? "当前资料" : navPath.length ? "文件夹" : "课程全部";
     const runBtn = $("ktpRun");
     const refreshBtn = $("ktpRefresh");
     runBtn.disabled = true;
     refreshBtn.disabled = true;
     refreshBtn.classList.add("busy");
     runBtn.innerHTML = `<span class="nu-run-ico">${icon("refresh", 13, "spin")}</span><span>提取中</span>`;
-    $("ktpStatus").textContent = mode === "resource" ? "拉取当前资料…" : "拉取课程内容…";
+    $("ktpStatus").textContent =
+      mode === "resource"
+        ? "拉取当前资料…"
+        : navPath.length
+        ? "拉取文件夹内容…"
+        : "拉取课程内容…";
     $("ktpProg").style.width = "5%";
 
     const badge = $("ktpBadgeMode");
@@ -1479,10 +1867,11 @@
     try {
       const jobs = await fetchJobs(mode, params, token);
       if (!jobs.length) {
-        $("ktpStatus").textContent = "没有可下载的文件";
+        const msg = navPath.length ? "当前文件夹是空的" : "没有可下载的文件";
+        $("ktpStatus").textContent = msg;
         $("ktpProg").style.width = "100%";
         window.__ketangpaiCourseLinks = DATA;
-        toast("没有可下载的文件", "err");
+        toast(msg, "err");
         return;
       }
 
@@ -1493,35 +1882,7 @@
           ? Math.round((done / jobs.length) * 100) + "%"
           : "50%";
 
-        const resolved = await resolveJobUrl(job);
-
-        if (resolved) {
-          const oss = toPublicOss(resolved);
-          let needsOssSign = false;
-          try {
-            needsOssSign =
-              /(^|\.)(attachments\.ketangpai\.com|aliyuncs\.com)$/i.test(
-                new URL(oss).hostname
-              );
-          } catch {}
-          const missing = needsOssSign
-            ? ["OSSAccessKeyId", "Expires", "Signature"].filter((k) => {
-                try {
-                  return !new URL(oss).searchParams.has(k);
-                } catch {
-                  return true;
-                }
-              })
-            : [];
-          job.oss = oss;
-          job.name = mediaName(job.name, oss);
-          job.hls = /\.m3u8(\?|$)/i.test(oss);
-          job.missing = missing.length ? missing : null;
-          job.error = null;
-        } else {
-          job.oss = null;
-          job.error = "无法提取直链";
-        }
+        if (!isFolderRow(job)) await prepareJob(job);
 
         DATA.push(job);
         done++;
@@ -1531,13 +1892,17 @@
           : "100%";
       }
 
-      const ok = DATA.filter((r) => r.oss).length;
+      const files = DATA.filter((r) => !isFolderRow(r));
+      const folderN = DATA.length - files.length;
+      const ok = files.filter((r) => r.oss).length;
       $("ktpProg").style.width = "100%";
       $("ktpStatus").innerHTML = `${modeLabel} · 提取完成`;
       window.__ketangpaiCourseLinks = DATA;
       toast(
-        `提取完成（${modeLabel}）：${ok}/${DATA.length}`,
-        ok === DATA.length ? "ok" : "err"
+        `提取完成（${modeLabel}）：${ok}/${files.length} 个文件${
+          folderN ? ` · ${folderN} 个文件夹` : ""
+        }`,
+        ok === files.length ? "ok" : "err"
       );
     } catch (e) {
       $("ktpStatus").textContent = "失败: " + (e.message || e);
