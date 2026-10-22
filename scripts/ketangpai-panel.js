@@ -607,7 +607,7 @@
       <span class="nu-ft-l">${icon("shield", 11)}本地提取 · 数据不出浏览器</span>
       <span class="nu-ft-r">
         <span class="nu-ft-hint">点击行选中</span>
-        <span class="nu-ver">V4</span>
+        <span class="nu-ver">V5</span>
       </span>
     </footer>
   `;
@@ -766,6 +766,29 @@
   const previewUrl = (r) => r.rurl || r.pluginUrl || r.playurl || r.oss || "";
   const fileUrl = (r) => r.oss || "";
 
+  function urlExt(url) {
+    try {
+      const m = new URL(url).pathname.match(/\.([a-z0-9]{2,5})$/i);
+      return m ? m[1].toLowerCase() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  const VIDEO_EXT = new Set(["mp4", "m4v", "webm", "mov", "mkv", "avi", "wmv", "flv"]);
+
+  // 视频转码后常见 .wmv/.avi 原件变成 mp4，保存时修正扩展名
+  function mediaName(name, url) {
+    const ue = urlExt(url);
+    if (!VIDEO_EXT.has(ue)) return name || "file";
+    const safe = String(name || "").trim() || "video";
+    const m = safe.match(/\.([a-z0-9]{2,5})$/i);
+    const ne = m ? m[1].toLowerCase() : "";
+    if (!ne) return safe + "." + ue;
+    if (!VIDEO_EXT.has(ne) || ne === ue) return safe;
+    return safe.replace(/\.[^.]+$/, "." + ue);
+  }
+
   function updateSelUI() {
     $("ktpSelNote").innerHTML = `已选 <b>${selected.size}</b>`;
     $("ktpCopySel").title = selected.size
@@ -888,6 +911,21 @@
   async function downloadFile(r) {
     const url = fileUrl(r);
     if (!url) throw new Error("无直链");
+    if (/\.m3u8(\?|$)/i.test(url)) {
+      throw new Error("HLS 流暂不支持直接保存，请复制预览链接用 m3u8 下载器");
+    }
+
+    // 官方下载接口带 Content-Disposition，直接交给浏览器流式保存，避免大文件占内存
+    if (/^https?:\/\/downloadv5\.ketangpai\.com\/File\/download\//i.test(url)) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = r.name || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return null;
+    }
+
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const blob = await res.blob();
@@ -981,7 +1019,12 @@
         actBtn.innerHTML = icon("refresh", 13, "spin");
         try {
           const size = await downloadFile(r);
-          toast(`已保存 ${r.name}（${(size / 1048576).toFixed(2)} MB）`, "ok");
+          toast(
+            size == null
+              ? `已开始下载 ${r.name}`
+              : `已保存 ${r.name}（${(size / 1048576).toFixed(2)} MB）`,
+            "ok"
+          );
           actBtn.classList.add("ok");
           actBtn.innerHTML = original;
           setTimeout(() => actBtn.classList.remove("ok"), 900);
@@ -1063,13 +1106,106 @@
 
   function toPublicOss(furl) {
     try {
-      const u = new URL(furl);
+      const u = new URL(furl, location.href);
       u.hostname = u.hostname.replace(/-internal(?=\.)/, "");
       u.protocol = "https:";
       return u.href;
     } catch {
       return furl;
     }
+  }
+
+  function absoluteUrl(value, base) {
+    if (!value) return null;
+    let v = String(value).trim().replace(/^['"]|['"]$/g, "");
+    v = v.replace(/\\\//g, "/");
+    if (!v || /^(data|blob|javascript):/i.test(v)) return null;
+    if (v.startsWith("//")) v = "https:" + v;
+    try {
+      return new URL(v, base || location.href).href;
+    } catch {
+      return null;
+    }
+  }
+
+  // 常见文件后缀 / OSS 直链判断
+  const STRONG_EXT =
+    /\.(mp4|m4v|webm|mov|mkv|avi|wmv|flv|m3u8|mp3|m4a|wav|pdf|ppt|pptx|pps|ppsx|doc|docx|docm|xls|xlsx|csv|zip|rar|7z|png|jpe?g|gif)$/i;
+  const WEAK_EXT = /\.(txt|md|json|html?)$/i;
+  const isOssHost = (u) =>
+    /(^|\.)attachments\.ketangpai\.com$|(^|\.)aliyuncs\.com$/i.test(u.hostname);
+  const isDownloadEndpoint = (u) =>
+    /(^|\.)downloadv5\.ketangpai\.com$/i.test(u.hostname) &&
+    /^\/File\/download\//i.test(u.pathname);
+  const hasOssSign = (u) =>
+    u.searchParams.has("OSSAccessKeyId") || u.searchParams.has("Signature");
+
+  // 从 furl、直链或协议相对地址中取真正的文件地址
+  function directFileUrl(value, base) {
+    if (!value) return null;
+    const furl = extractFurl(value);
+    if (furl) {
+      const absFurl = absoluteUrl(furl, base);
+      if (absFurl) {
+        try {
+          const u = new URL(absFurl);
+          if (
+            STRONG_EXT.test(u.pathname) ||
+            isOssHost(u) ||
+            isDownloadEndpoint(u) ||
+            hasOssSign(u)
+          ) {
+            return toPublicOss(absFurl);
+          }
+        } catch {}
+      }
+    }
+
+    const abs = absoluteUrl(value, base);
+    if (!abs) return null;
+    try {
+      const u = new URL(abs);
+      // PluginApp / 预览页需要先抓 HTML，不能当文件
+      if (/\/PluginApp\//i.test(u.pathname)) return null;
+      if (isDownloadEndpoint(u)) return abs;
+      if (STRONG_EXT.test(u.pathname)) return abs;
+      if (isOssHost(u)) return abs;
+      if (hasOssSign(u)) return abs;
+      if (WEAK_EXT.test(u.pathname) && hasOssSign(u)) return abs;
+    } catch {}
+    return null;
+  }
+
+  // 兼容 PDF 预览页（frame + furl）与视频页（video/source 直链）
+  function htmlToFileUrl(html, base) {
+    const text = String(html || "")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\\\//g, "/");
+
+    let m;
+    const mediaRe =
+      /<(?:iframe|frame|source|video|audio)\b[^>]*\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+    while ((m = mediaRe.exec(text))) {
+      const u = directFileUrl(m[1], base);
+      if (u) return u;
+    }
+
+    const linkRe = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi;
+    while ((m = linkRe.exec(text))) {
+      const u = directFileUrl(m[1], base);
+      if (u) return u;
+    }
+
+    // 兜底：脚本/JSON 里直接出现的 OSS 地址
+    const urlRe = /(?:https?:)?\/\/[^\s"'<>\\]+/gi;
+    while ((m = urlRe.exec(text))) {
+      const u = directFileUrl(m[0].replace(/[),;]+$/, ""), base);
+      if (u) return u;
+    }
+
+    return directFileUrl(extractFurl(text), base);
   }
 
   function getToken() {
@@ -1102,17 +1238,60 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  async function pluginAppToFurl(pluginUrl) {
+  async function pluginAppToFileUrl(pluginUrl) {
     try {
       const res = await fetch(pluginUrl, { credentials: "include" });
       if (!res.ok) return null;
+
+      // 只探测响应，不要顺手把大文件整个下载一遍
+      const dropBody = async () => {
+        try {
+          await res.body?.cancel();
+        } catch {}
+      };
+
+      const redirected = directFileUrl(res.url, pluginUrl);
+      if (redirected) {
+        await dropBody();
+        return redirected;
+      }
+
+      // 下载接口直接返回文件（rar/txt/wmv 等），不是 HTML 预览页
+      const disp = res.headers.get("content-disposition") || "";
+      if (/attachment/i.test(disp)) {
+        const fileUrl = res.url || pluginUrl;
+        await dropBody();
+        return fileUrl;
+      }
+
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (
+        ct &&
+        !/(text\/html|application\/xhtml|application\/json|javascript)/.test(ct)
+      ) {
+        const fileUrl = res.url || pluginUrl;
+        await dropBody();
+        return fileUrl;
+      }
       const html = await res.text();
-      const m = html.match(/<frame\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
-      if (!m) return null;
-      return extractFurl(m[1].replace(/&amp;/g, "&"));
+      return htmlToFileUrl(html, res.url || pluginUrl);
     } catch {
       return null;
     }
+  }
+
+  async function resolveJobUrl(job) {
+    const seen = new Set();
+    for (const raw of [job.playurl, job.downloadurl, job.rurl]) {
+      if (!raw || seen.has(raw)) continue;
+      seen.add(raw);
+      const direct = directFileUrl(raw);
+      if (direct) return direct;
+      const parsed = await pluginAppToFileUrl(raw);
+      if (parsed) return parsed;
+      await sleep(120);
+    }
+    return null;
   }
 
   function pageMode(params) {
@@ -1144,25 +1323,35 @@
         : item.attachment
         ? [item.attachment]
         : [];
-      if (!atts.length)
-        return [
-          {
-            title,
-            name: title,
-            size: "",
-            rurl: null,
-            playurl: null,
-            oss: null,
-            error: "无附件",
-            resource: item.id,
-          },
-        ];
+      const itemPlay = item.playurl || item.videourl || item.video_url || null;
+      const itemDl =
+        item.downloadurl || item.downurl || item.fileurl || item.url || null;
+      const itemRurl = item.rurl || item.pluginUrl || null;
+      if (!atts.length) {
+        if (itemPlay || itemDl || itemRurl) {
+          return [
+            {
+              title,
+              name: item.name || title,
+              size: item.size || "",
+              rurl: itemRurl,
+              playurl: itemPlay,
+              downloadurl: itemDl,
+              oss: null,
+              resource: item.id,
+            },
+          ];
+        }
+        return [];
+      }
       return atts.map((att) => ({
         title,
         name: att.name || title,
         size: att.size || "",
-        rurl: att.rurl || null,
-        playurl: att.playurl || null,
+        rurl: att.rurl || itemRurl,
+        playurl: att.playurl || itemPlay,
+        downloadurl:
+          att.downloadurl || att.downurl || att.fileurl || att.url || itemDl,
         resource: item.id,
         fileid: att.fileid || null,
       }));
@@ -1208,17 +1397,24 @@
         : item.attachment
         ? [item.attachment]
         : [];
+      const itemPlay = item.playurl || item.videourl || item.video_url || null;
+      const itemDl =
+        item.downloadurl || item.downurl || item.fileurl || item.url || null;
+      const itemRurl = item.rurl || item.pluginUrl || null;
       if (!atts.length) {
-        jobs.push({
-          title,
-          name: title,
-          size: "",
-          rurl: null,
-          playurl: null,
-          oss: null,
-          error: "无附件",
-          resource: item.id,
-        });
+        if (itemPlay || itemDl || itemRurl) {
+          jobs.push({
+            title,
+            name: item.name || title,
+            size: item.size || "",
+            rurl: itemRurl,
+            playurl: itemPlay,
+            downloadurl: itemDl,
+            oss: null,
+            resource: item.id,
+          });
+        }
+        // 文件夹 / 作业等没有附件的条目直接跳过
         continue;
       }
       for (const att of atts) {
@@ -1226,8 +1422,10 @@
           title,
           name: att.name || title,
           size: att.size || "",
-          rurl: att.rurl || null,
-          playurl: att.playurl || null,
+          rurl: att.rurl || itemRurl,
+          playurl: att.playurl || itemPlay,
+          downloadurl:
+            att.downloadurl || att.downurl || att.fileurl || att.url || itemDl,
           resource: item.id,
           fileid: att.fileid || null,
         });
@@ -1280,6 +1478,13 @@
 
     try {
       const jobs = await fetchJobs(mode, params, token);
+      if (!jobs.length) {
+        $("ktpStatus").textContent = "没有可下载的文件";
+        $("ktpProg").style.width = "100%";
+        window.__ketangpaiCourseLinks = DATA;
+        toast("没有可下载的文件", "err");
+        return;
+      }
 
       let done = 0;
       for (const job of jobs) {
@@ -1288,22 +1493,29 @@
           ? Math.round((done / jobs.length) * 100) + "%"
           : "50%";
 
-        let furl = extractFurl(job.playurl);
-        if (!furl && job.rurl) {
-          furl = await pluginAppToFurl(job.rurl);
-          await sleep(120);
-        }
+        const resolved = await resolveJobUrl(job);
 
-        if (furl) {
-          const oss = toPublicOss(furl);
-          const missing = ["OSSAccessKeyId", "Expires", "Signature"].filter((k) => {
-            try {
-              return !new URL(oss).searchParams.has(k);
-            } catch {
-              return true;
-            }
-          });
+        if (resolved) {
+          const oss = toPublicOss(resolved);
+          let needsOssSign = false;
+          try {
+            needsOssSign =
+              /(^|\.)(attachments\.ketangpai\.com|aliyuncs\.com)$/i.test(
+                new URL(oss).hostname
+              );
+          } catch {}
+          const missing = needsOssSign
+            ? ["OSSAccessKeyId", "Expires", "Signature"].filter((k) => {
+                try {
+                  return !new URL(oss).searchParams.has(k);
+                } catch {
+                  return true;
+                }
+              })
+            : [];
           job.oss = oss;
+          job.name = mediaName(job.name, oss);
+          job.hls = /\.m3u8(\?|$)/i.test(oss);
           job.missing = missing.length ? missing : null;
           job.error = null;
         } else {
